@@ -16,7 +16,6 @@ from storage.memory.memory_saver import get_memory_saver
 
 # 导入brief内容获取工具
 from tools.fetch_brief_tool import fetch_brief_content
-from tools.save_brief_tool import save_brief_to_file
 
 LLM_CONFIG = "config/agent_llm_config.json"
 
@@ -61,7 +60,7 @@ def build_agent(ctx=None):
     return create_agent(
         model=llm,
         system_prompt=cfg.get("sp"),
-        tools=[fetch_brief_content, save_brief_to_file],
+        tools=[fetch_brief_content],
         checkpointer=get_memory_saver(),
         state_schema=AgentState,
     )
