@@ -1,13 +1,19 @@
 """
 邮件发送工具
-用于将生成的brief发送到用户指定的邮箱
+用于将生成的brief以md文件附件形式发送到指定邮箱
 """
 
 import json
 import smtplib
 import ssl
 import time
+import os
+import base64
+from datetime import datetime
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 from email.header import Header
 from email.utils import formataddr, formatdate, make_msgid
 from langchain.tools import tool, ToolRuntime
@@ -34,12 +40,12 @@ def get_email_config():
 @tool
 def send_brief_to_email(brief_content: str, to_email: str, client_name: str = None, runtime: ToolRuntime = None) -> str:
     """
-    将生成的brief发送到指定邮箱
+    将生成的brief以md文件附件形式发送到指定邮箱
     
     Args:
         brief_content: brief的文本内容
         to_email: 收件人邮箱地址
-        client_name: 客户名称（可选），用于邮件主题
+        client_name: 客户名称（可选），用于邮件主题和文件名
         
     Returns:
         发送结果描述
@@ -52,7 +58,18 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
         # 获取邮件配置
         config = get_email_config()
         
-        # 构建HTML格式邮件内容
+        # 生成文件名（符合命名规范）
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        client_prefix = client_name.replace(" ", "_").replace("/", "_") if client_name else "brief"
+        client_prefix = "".join(c for c in client_prefix if c.isalnum() or c in "_-")
+        filename = f"brief_{client_prefix}_{timestamp}.md"
+        
+        # 将brief内容保存到临时文件
+        temp_file_path = f"/tmp/{filename}"
+        with open(temp_file_path, 'w', encoding='utf-8') as f:
+            f.write(brief_content)
+        
+        # 构建HTML格式邮件正文
         html_content = f"""
         <html>
         <head>
@@ -62,7 +79,7 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
                 .header {{ background-color: #4a90e2; color: white; padding: 20px; text-align: center; }}
                 .content {{ background-color: #f9f9f9; padding: 20px; border-radius: 5px; margin-top: 20px; }}
                 .footer {{ text-align: center; color: #666; margin-top: 20px; font-size: 12px; }}
-                pre {{ background-color: #f5f5f5; padding: 15px; border-radius: 5px; overflow-x: auto; }}
+                .highlight {{ background-color: #e3f2fd; padding: 10px; border-left: 4px solid #4a90e2; margin: 15px 0; }}
                 .client-name {{ color: #4a90e2; font-weight: bold; }}
             </style>
         </head>
@@ -73,8 +90,15 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
                 </div>
                 <div class="content">
                     <p>您好，</p>
-                    <p>您的客户Brief已经整理完成，以下是详细内容：</p>
-                    <pre>{brief_content}</pre>
+                    <p>您的客户Brief已经整理完成，详细内容请查看附件中的 <strong>{filename}</strong> 文件。</p>
+                    <div class="highlight">
+                        <p><strong>附件说明：</strong></p>
+                        <ul>
+                            <li>文件格式：Markdown (.md)</li>
+                            <li>客户名称：{client_name if client_name else '未指定'}</li>
+                            <li>生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</li>
+                        </ul>
+                    </div>
                     <p>如有任何问题或需要修改，请直接回复或联系项目经理。</p>
                 </div>
                 <div class="footer">
@@ -89,13 +113,30 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
         client_prefix = f"[{client_name}] " if client_name else ""
         subject = f"{client_prefix}客户Brief已生成"
         
-        # 创建邮件对象
-        msg = MIMEText(html_content, "html", "utf-8")
+        # 创建multipart邮件对象
+        msg = MIMEMultipart()
         msg["From"] = formataddr(("广告项目经理Agent", config["account"]))
         msg["To"] = to_email
         msg["Subject"] = Header(subject, "utf-8")
         msg["Date"] = formatdate(localtime=True)
         msg["Message-ID"] = make_msgid()
+        
+        # 添加HTML正文
+        msg.attach(MIMEText(html_content, "html", "utf-8"))
+        
+        # 添加md文件附件
+        with open(temp_file_path, 'rb') as f:
+            attachment = MIMEBase('application', 'octet-stream')
+            attachment.set_payload(f.read())
+            encoders.encode_base64(attachment)
+            
+            # 设置附件文件名（包含文件名编码）
+            encoded_filename = Header(filename, 'utf-8').encode()
+            attachment.add_header(
+                'Content-Disposition',
+                f'attachment; filename="{encoded_filename}"'
+            )
+            msg.attach(attachment)
         
         # 发送邮件
         ctx = ssl.create_default_context()
@@ -117,12 +158,24 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
                     server.sendmail(config["account"], [to_email], msg.as_string())
                     server.quit()
                 
-                return f"✅ Brief已成功发送到邮箱：{to_email}"
+                # 清理临时文件
+                try:
+                    os.remove(temp_file_path)
+                except:
+                    pass
+                
+                return f"✅ Brief已成功发送到邮箱：{to_email}（附件：{filename}）"
                 
             except (smtplib.SMTPServerDisconnected, smtplib.SMTPConnectError,
                     smtplib.SMTPDataError, smtplib.SMTPHeloError, ssl.SSLError, OSError) as e:
                 last_err = e
                 time.sleep(1 * (i + 1))
+        
+        # 清理临时文件（发送失败时）
+        try:
+            os.remove(temp_file_path)
+        except:
+            pass
         
         if last_err:
             return f"❌ 发送邮件失败：{str(last_err)}"
@@ -130,4 +183,10 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
         return "❌ 发送邮件失败：未知错误"
         
     except Exception as e:
+        # 清理临时文件（发生异常时）
+        try:
+            if 'temp_file_path' in locals():
+                os.remove(temp_file_path)
+        except:
+            pass
         return f"❌ 发送邮件时发生错误：{str(e)}"
