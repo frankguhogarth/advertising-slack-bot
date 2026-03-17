@@ -17,6 +17,7 @@ from storage.memory.memory_saver import get_memory_saver
 # 导入brief内容获取工具
 from tools.fetch_brief_tool import fetch_brief_content
 from tools.send_brief_email_tool import send_brief_to_email
+from tools.notion_tools import get_all_staff, get_staff_workload, find_staff_by_position, create_project_card
 
 LLM_CONFIG = "config/agent_llm_config.json"
 
@@ -61,7 +62,7 @@ def build_agent(ctx=None):
     return create_agent(
         model=llm,
         system_prompt=cfg.get("sp"),
-        tools=[fetch_brief_content, send_brief_to_email],
+        tools=[fetch_brief_content, send_brief_to_email, get_all_staff, get_staff_workload, find_staff_by_position, create_project_card],
         checkpointer=get_memory_saver(),
         state_schema=AgentState,
     )
