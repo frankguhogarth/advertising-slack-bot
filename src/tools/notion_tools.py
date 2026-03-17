@@ -219,7 +219,7 @@ def find_staff_by_position(position: str, runtime: ToolRuntime = None) -> str:
 
 
 @tool
-def create_project_card(project_name: str, staff_names: str, start_date: str, end_date: str, client_name: str = None, runtime: ToolRuntime = None) -> str:
+def create_project_card(project_name: str, staff_names: str, start_date: str, end_date: str, runtime: ToolRuntime = None) -> str:
     """
     在Notion项目表中创建新的项目卡片
     
@@ -228,7 +228,6 @@ def create_project_card(project_name: str, staff_names: str, start_date: str, en
         staff_names: 员工姓名列表，用逗号分隔，如"Lia Liu,Wu Qiong"
         start_date: 开始日期，格式：YYYY-MM-DD
         end_date: 结束日期，格式：YYYY-MM-DD
-        client_name: 客户名称（可选）
         
     Returns:
         创建结果
@@ -249,10 +248,10 @@ def create_project_card(project_name: str, staff_names: str, start_date: str, en
         }
         
         # 构建员工关联数据
-        staff_relations = []
+        user_relations = []
         for staff_name in staff_list:
             if staff_name in staff_name_to_id:
-                staff_relations.append({
+                user_relations.append({
                     "id": staff_name_to_id[staff_name]
                 })
         
@@ -262,7 +261,7 @@ def create_project_card(project_name: str, staff_names: str, start_date: str, en
                 "database_id": PROJECT_DATABASE_ID
             },
             "properties": {
-                "Name": {  # 假设有一个Name字段
+                "Name": {  # 项目名称（页面标题）
                     "title": [
                         {
                             "text": {
@@ -271,36 +270,22 @@ def create_project_card(project_name: str, staff_names: str, start_date: str, en
                         }
                     ]
                 },
-                "Start date": {  # 假设有一个开始日期字段
+                "Date": {  # 日期范围（包含开始和结束日期）
                     "date": {
-                        "start": start_date
+                        "start": start_date,
+                        "end": end_date
                     }
                 },
-                "End date": {  # 假设有一个结束日期字段
-                    "date": {
-                        "start": end_date
+                "User": {  # 员工关联
+                    "relation": user_relations
+                },
+                "Status": {  # 项目状态
+                    "status": {
+                        "name": "In progress"
                     }
                 }
             }
         }
-        
-        # 添加客户名称（如果提供）
-        if client_name:
-            page_data["properties"]["Client"] = {
-                "rich_text": [
-                    {
-                        "text": {
-                            "content": client_name
-                        }
-                    }
-                ]
-            }
-        
-        # 添加员工关联（如果找到员工）
-        if staff_relations:
-            page_data["properties"]["Staff"] = {
-                "relation": staff_relations
-            }
         
         # 创建页面
         response = requests.post(
@@ -315,7 +300,7 @@ def create_project_card(project_name: str, staff_names: str, start_date: str, en
         result = response.json()
         project_url = result.get("url", "")
         
-        return f"✅ 项目卡片创建成功！\n项目名称: {project_name}\n员工: {', '.join(staff_list)}\n开始时间: {start_date}\n结束时间: {end_date}\n项目链接: {project_url}"
+        return f"✅ 项目卡片创建成功！\n项目名称: {project_name}\n员工: {', '.join(staff_list)}\n时间: {start_date} 至 {end_date}\n状态: In progress\n项目链接: {project_url}"
         
     except Exception as e:
         return f"创建项目卡片失败: {str(e)}"
