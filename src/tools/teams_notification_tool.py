@@ -8,7 +8,7 @@ from langchain.tools import tool, ToolRuntime
 from coze_coding_utils.runtime_ctx.context import new_context
 
 # Teams Webhook URL（需要用户配置后填写）
-TEAMS_WEBHOOK_URL = None
+TEAMS_WEBHOOK_URL = "https://hogarthww.webhook.office.com/webhookb2/1789ea38-6fd3-4407-b226-c9806bc8b4d2@5f5c8279-ccd7-4c47-8d15-ac9cc1973501/IncomingWebhook/c6b1302828564fcf92de162314f064f7/2404aa41-3c7e-4286-b40b-bff125905a40/V2uv0HFexGe5zWIlneH_cGMh9Ny7qbF-XfhoAJ9KkOkHs1"
 
 
 def set_teams_webhook_url(webhook_url: str):
