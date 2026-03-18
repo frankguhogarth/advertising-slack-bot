@@ -1,6 +1,6 @@
 """
 邮件发送工具
-用于将生成的brief以md文件附件形式发送到指定邮箱
+用于将生成的brief以PDF文件附件形式发送到指定邮箱
 """
 
 import json
@@ -8,7 +8,7 @@ import smtplib
 import ssl
 import time
 import os
-import base64
+import requests
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -18,6 +18,7 @@ from email.header import Header
 from email.utils import formataddr, formatdate, make_msgid
 from langchain.tools import tool, ToolRuntime
 from coze_coding_utils.runtime_ctx.context import new_context
+from coze_coding_dev_sdk import DocumentGenerationClient, PDFConfig
 
 try:
     from coze_workload_identity import Client
@@ -40,16 +41,21 @@ def get_email_config():
 @tool
 def send_brief_to_email(brief_content: str, to_email: str, client_name: str = None, runtime: ToolRuntime = None) -> str:
     """
-    将生成的brief以md文件附件形式发送到指定邮箱
+    将生成的brief以PDF文件附件形式发送到指定邮箱
     
     Args:
-        brief_content: brief的文本内容
+        brief_content: brief的文本内容（Markdown格式）
         to_email: 收件人邮箱地址
         client_name: 客户名称（可选），用于邮件主题和文件名
         
     Returns:
         发送结果描述
     """
+    ctx = runtime.context if runtime else new_context(method="send_brief_to_email")
+    
+    pdf_url = None
+    temp_file_path = None
+    
     try:
         # 检查邮件服务是否可用
         if not IDENTITY_AVAILABLE:
@@ -58,16 +64,41 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
         # 获取邮件配置
         config = get_email_config()
         
-        # 生成文件名（符合命名规范）
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # 生成PDF文件
+        # title参数必须是英文，使用client_name的拼音或拼音首字母
         client_prefix = client_name.replace(" ", "_").replace("/", "_") if client_name else "brief"
+        # 移除非字母数字和下划线、短横线的字符
         client_prefix = "".join(c for c in client_prefix if c.isalnum() or c in "_-")
-        filename = f"brief_{client_prefix}_{timestamp}.md"
+        # 使用英文名作为PDF文件名
+        pdf_title = f"brief_{client_prefix}"
         
-        # 将brief内容保存到临时文件
-        temp_file_path = f"/tmp/{filename}"
-        with open(temp_file_path, 'w', encoding='utf-8') as f:
-            f.write(brief_content)
+        try:
+            # 配置PDF生成参数
+            pdf_config = PDFConfig(page_size="A4")
+            pdf_client = DocumentGenerationClient(pdf_config=pdf_config)
+            
+            # 生成PDF，返回S3的presigned URL
+            pdf_url = pdf_client.create_pdf_from_markdown(brief_content, pdf_title)
+            
+        except Exception as e:
+            return f"❌ 生成PDF文件失败：{str(e)}"
+        
+        # 从S3下载PDF文件到本地
+        try:
+            # 生成临时文件名
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"brief_{client_prefix}_{timestamp}.pdf"
+            temp_file_path = f"/tmp/{filename}"
+            
+            # 下载PDF文件
+            response = requests.get(pdf_url, timeout=30)
+            response.raise_for_status()
+            
+            with open(temp_file_path, 'wb') as f:
+                f.write(response.content)
+                
+        except Exception as e:
+            return f"❌ 下载PDF文件失败：{str(e)}"
         
         # 构建HTML格式邮件正文
         html_content = f"""
@@ -94,11 +125,12 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
                     <div class="highlight">
                         <p><strong>附件说明：</strong></p>
                         <ul>
-                            <li>文件格式：Markdown (.md)</li>
-                            <li>客户名称：{client_name if client_name else '未指定'}</li>
+                            <li>文件格式：PDF</li>
+                            <li>客户名称：<span class="client-name">{client_name if client_name else '未指定'}</span></li>
                             <li>生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</li>
                         </ul>
                     </div>
+                    <p>PDF文件可以直接在电脑、手机等设备上查看，无需安装特殊软件。</p>
                     <p>如有任何问题或需要修改，请直接回复或联系项目经理。</p>
                 </div>
                 <div class="footer">
@@ -124,9 +156,9 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
         # 添加HTML正文
         msg.attach(MIMEText(html_content, "html", "utf-8"))
         
-        # 添加md文件附件
+        # 添加PDF文件附件
         with open(temp_file_path, 'rb') as f:
-            attachment = MIMEBase('application', 'octet-stream')
+            attachment = MIMEBase('application', 'pdf')
             attachment.set_payload(f.read())
             encoders.encode_base64(attachment)
             
@@ -139,8 +171,8 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
             msg.attach(attachment)
         
         # 发送邮件
-        ctx = ssl.create_default_context()
-        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+        ctx_ssl = ssl.create_default_context()
+        ctx_ssl.minimum_version = ssl.TLSVersion.TLSv1_2
         
         attempts = 3
         last_err = None
@@ -150,7 +182,7 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
                 with smtplib.SMTP_SSL(
                     config["smtp_server"],
                     config["smtp_port"],
-                    context=ctx,
+                    context=ctx_ssl,
                     timeout=30
                 ) as server:
                     server.ehlo()
@@ -185,7 +217,7 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
     except Exception as e:
         # 清理临时文件（发生异常时）
         try:
-            if 'temp_file_path' in locals():
+            if temp_file_path and os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
         except:
             pass
