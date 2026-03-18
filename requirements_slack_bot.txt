@@ -1,0 +1,28 @@
+# Slack Bot 依赖包
+
+# Slack SDK
+slack-sdk>=3.26.0
+
+# Web框架
+flask>=3.0.0
+werkzeug>=3.0.0
+
+# 环境变量管理
+python-dotenv>=1.0.0
+
+# HTTP请求
+requests>=2.31.0
+
+# 现有Agent依赖
+langchain>=0.1.0
+langchain-openai>=0.0.5
+langgraph>=0.0.20
+
+# 文档处理
+coze-coding-dev-sdk>=1.0.0
+
+# Notion集成
+notion-client>=2.2.1
+
+# 工具库
+pydantic>=2.0.0
