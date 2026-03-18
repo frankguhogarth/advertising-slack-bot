@@ -92,11 +92,13 @@
    点击 **"Advanced"** → **"Add Environment Variable"**，添加：
 
    ```
-   SLACK_BOT_TOKEN=xoxb-10721906269941-10753673319344-UEfI2MPzLKYcOQxhjhzCui3V
-   SLACK_SIGNING_SECRET=8d8077532096a705fc87c25d8df2a1ed
+   SLACK_BOT_TOKEN=<你的Slack Bot Token>
+   SLACK_SIGNING_SECRET=<你的Signing Secret>
    PORT=5001
    COZE_WORKSPACE_PATH=/opt/render/project
    ```
+
+   > 提示：这些信息可以从Slack App配置页面获取，不要提交到代码中。
 
 6. **选择免费计划**
    - Instance Type: **Free**

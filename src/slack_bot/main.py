@@ -38,8 +38,8 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # Slack配置（从环境变量获取）
-SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "xoxb-10721906269941-10753673319344-UEfI2MPzLKYcOQxhjhzCui3V")
-SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET", "8d8077532096a705fc87c25d8df2a1ed")
+SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "")
+SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET", "")
 
 # 创建Slack客户端
 client = WebClient(token=SLACK_BOT_TOKEN)

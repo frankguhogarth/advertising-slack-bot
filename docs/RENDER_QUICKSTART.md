@@ -36,10 +36,12 @@ git push -u origin main
    - Build Command: `pip install -r requirements.txt`
    - Start Command: `python src/slack_bot/main.py`
 4. **添加环境变量**：
-   - `SLACK_BOT_TOKEN`: `xoxb-10721906269941-10753673319344-UEfI2MPzLKYcOQxhjhzCui3V`
-   - `SLACK_SIGNING_SECRET`: `8d8077532096a705fc87c25d8df2a1ed`
+   - `SLACK_BOT_TOKEN`: `<你的Slack Bot Token>`
+   - `SLACK_SIGNING_SECRET`: `<你的Signing Secret>`
    - `PORT`: `5001`
    - `COZE_WORKSPACE_PATH`: `/opt/render/project`
+
+   > 提示：这些信息可以从Slack App配置页面获取。
 5. **选择** Free 计划
 6. **点击** "Create Web Service"
 

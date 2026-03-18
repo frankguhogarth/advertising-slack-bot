@@ -3,12 +3,13 @@ Notion集成工具
 用于查询员工信息和创建项目卡片
 """
 
+import os
 import requests
 from langchain.tools import tool, ToolRuntime
 from coze_coding_utils.runtime_ctx.context import new_context
 
-# Notion API配置
-NOTION_API_KEY = "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"
+# Notion API配置（从环境变量获取）
+NOTION_API_KEY = os.getenv("NOTION_API_KEY", "")
 NOTION_VERSION = "2022-06-28"
 
 # Database IDs
