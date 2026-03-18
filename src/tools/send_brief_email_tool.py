@@ -1,6 +1,6 @@
 """
 邮件发送工具
-用于将生成的brief以PDF文件附件形式发送到指定邮箱
+用于将生成的brief以Word文档（DOCX）文件附件形式发送到指定邮箱
 """
 
 import json
@@ -95,160 +95,49 @@ def download_image(url: str, save_path: str) -> bool:
         return False
 
 
-def markdown_to_html(brief_content: str) -> str:
-    """将Markdown内容转换为HTML，以保持正确的格式
+def normalize_markdown_for_docx(markdown_content: str) -> str:
+    """规范化Markdown格式以符合DOCX标准
     
     Args:
-        brief_content: Markdown格式的内容
+        markdown_content: 原始Markdown内容
         
     Returns:
-        HTML格式的内容
+        规范化后的Markdown内容
     """
-    html_lines = []
-    html_lines.append('<!DOCTYPE html>')
-    html_lines.append('<html lang="zh-CN">')
-    html_lines.append('<head>')
-    html_lines.append('<meta charset="UTF-8">')
-    html_lines.append('<style>')
-    html_lines.append('body {')
-    html_lines.append('  font-family: "Microsoft YaHei", "SimHei", Arial, sans-serif;')
-    html_lines.append('  font-size: 12px;')
-    html_lines.append('  line-height: 1.8;')
-    html_lines.append('  color: #333;')
-    html_lines.append('  margin: 40px;')
-    html_lines.append('}')
-    html_lines.append('h1 {')
-    html_lines.append('  font-family: "Microsoft YaHei", "SimHei", Arial, sans-serif;')
-    html_lines.append('  font-size: 18px;')
-    html_lines.append('  font-weight: bold;')
-    html_lines.append('  color: #000;')
-    html_lines.append('  margin-top: 20px;')
-    html_lines.append('  margin-bottom: 10px;')
-    html_lines.append('  border-bottom: 2px solid #000;')
-    html_lines.append('  padding-bottom: 5px;')
-    html_lines.append('}')
-    html_lines.append('ul, ol {')
-    html_lines.append('  margin: 5px 0;')
-    html_lines.append('  padding-left: 20px;')
-    html_lines.append('}')
-    html_lines.append('li {')
-    html_lines.append('  margin: 5px 0;')
-    html_lines.append('  line-height: 1.8;')
-    html_lines.append('}')
-    html_lines.append('p {')
-    html_lines.append('  margin: 10px 0;')
-    html_lines.append('  line-height: 1.8;')
-    html_lines.append('  text-align: justify;')
-    html_lines.append('}')
-    html_lines.append('.nested-list {')
-    html_lines.append('  margin-left: 20px;')
-    html_lines.append('}')
-    html_lines.append('</style>')
-    html_lines.append('</head>')
-    html_lines.append('<body>')
+    lines = markdown_content.split('\n')
+    normalized_lines = []
     
-    # 解析Markdown内容
-    lines = brief_content.split('\n')
-    current_title = None
-    in_ol = False
-    in_nested_ol = False
-    
-    for i, line in enumerate(lines):
-        # 处理标题（######）
+    for line in lines:
+        # 处理标题：将######转换为#
         if line.startswith('######'):
-            # 关闭之前的列表
-            if in_nested_ol:
-                html_lines.append('</ol>')
-                in_nested_ol = False
-            if in_ol:
-                html_lines.append('</ol>')
-                in_ol = False
-            
-            text = line[6:].strip()
-            html_lines.append(f'<h1>{text}</h1>')
-        # 处理缩进的列表项（\t1. 或 \t-）
+            # 移除多余的#，只保留一个
+            line = '#' + line[6:]
+            line = line.strip()
+            # 在标题前添加空行
+            if normalized_lines and normalized_lines[-1].strip():
+                normalized_lines.append('')
+            normalized_lines.append(line)
+            normalized_lines.append('')
+        # 处理缩进：将\t转换为空格
         elif line.startswith('\t'):
-            text = line.lstrip('\t').strip()
-            if text.startswith('-'):
-                if not in_nested_ol:
-                    html_lines.append('<ul class="nested-list">')
-                    in_nested_ol = True
-                text = text[1:].strip()
-                html_lines.append(f'<li>{text}</li>')
-            elif text and text[0].isdigit() and ('. ' in text or '.\t' in text):
-                if not in_nested_ol:
-                    html_lines.append('<ol class="nested-list">')
-                    in_nested_ol = True
-                # 提取数字后的文本
-                if '. ' in text:
-                    text = text.split('. ', 1)[1] if '. ' in text else text
-                elif '.\t' in text:
-                    text = text.split('.\t', 1)[1] if '.\t' in text else text
-                html_lines.append(f'<li>{text}</li>')
-            else:
-                # 缩进的普通文本
-                if in_nested_ol:
-                    html_lines.append('</ol>')
-                    in_nested_ol = False
-                if in_ol:
-                    html_lines.append('</ol>')
-                    in_ol = False
-                html_lines.append(f'<p style="margin-left: 20px;">{text}</p>')
-        # 处理列表项（- 或 数字.）
-        elif line.strip().startswith('-'):
-            # 关闭嵌套列表
-            if in_nested_ol:
-                html_lines.append('</ol>')
-                in_nested_ol = False
-            if not in_ol:
-                html_lines.append('<ul>')
-                in_ol = True
-            text = line.lstrip('-').strip()
-            html_lines.append(f'<li>{text}</li>')
-        elif line.strip() and line.strip()[0].isdigit() and ('. ' in line.strip() or '.\t' in line.strip()):
-            # 关闭嵌套列表
-            if in_nested_ol:
-                html_lines.append('</ol>')
-                in_nested_ol = False
-            if not in_ol:
-                html_lines.append('<ol>')
-                in_ol = True
-            text = line.strip()
-            # 提取数字后的文本
-            if '. ' in text:
-                text = text.split('. ', 1)[1] if '. ' in text else text
-            elif '.\t' in text:
-                text = text.split('.\t', 1)[1] if '.\t' in text else text
-            html_lines.append(f'<li>{text}</li>')
+            # 每个tab转换为2个空格
+            indent_count = len(line) - len(line.lstrip('\t'))
+            indent = '  ' * indent_count
+            line = indent + line.lstrip('\t')
+            normalized_lines.append(line)
+        # 处理列表
+        elif line.strip().startswith('- '):
+            normalized_lines.append(line)
+        elif line.strip() and line.strip()[0].isdigit() and '. ' in line.strip():
+            normalized_lines.append(line)
         # 处理空行
         elif not line.strip():
-            if in_nested_ol:
-                html_lines.append('</ol>')
-                in_nested_ol = False
-            if in_ol:
-                html_lines.append('</ol>')
-                in_ol = False
+            normalized_lines.append('')
         # 处理普通文本
-        elif line.strip():
-            if in_nested_ol:
-                html_lines.append('</ol>')
-                in_nested_ol = False
-            if in_ol:
-                html_lines.append('</ol>')
-                in_ol = False
-            text = line.strip()
-            html_lines.append(f'<p>{text}</p>')
+        else:
+            normalized_lines.append(line)
     
-    # 关闭未关闭的列表
-    if in_nested_ol:
-        html_lines.append('</ol>')
-    if in_ol:
-        html_lines.append('</ol>')
-    
-    html_lines.append('</body>')
-    html_lines.append('</html>')
-    
-    return '\n'.join(html_lines)
+    return '\n'.join(normalized_lines)
 
 
 @tool
@@ -266,7 +155,7 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
     """
     ctx = runtime.context if runtime else new_context(method="send_brief_to_email")
     
-    pdf_url = None
+    docx_url = None
     temp_file_path = None
     temp_files_to_cleanup = []
     
@@ -288,13 +177,16 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
             old_pattern = f'[图片{image["index"]}:[^\\]]+]'
             clean_brief = re.sub(old_pattern, f'[图片{image["index"]} - 请查看邮件附件]', clean_brief)
         
-        # 生成PDF文件
+        # 规范化Markdown格式以符合DOCX标准
+        clean_brief_normalized = normalize_markdown_for_docx(clean_brief)
+        
+        # 生成DOCX文件
         # title参数必须是英文，使用client_name的拼音或拼音首字母
         client_prefix = client_name.replace(" ", "_").replace("/", "_") if client_name else "brief"
         # 移除非字母数字和下划线、短横线的字符
         client_prefix = "".join(c for c in client_prefix if c.isalnum() or c in "_-")
-        # 使用英文名作为PDF文件名
-        pdf_title = f"brief_{client_prefix}"
+        # 使用英文名作为DOCX文件名
+        docx_title = f"brief_{client_prefix}"
         
         try:
             # 配置DOCX生成参数（支持中文）
@@ -308,11 +200,8 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
             )
             docx_client = DocumentGenerationClient(docx_config=docx_config)
             
-            # 将Markdown转换为HTML，以保持正确的格式
-            html_content = markdown_to_html(clean_brief)
-            
-            # 使用HTML内容生成DOCX
-            docx_url = docx_client.create_docx_from_html(html_content, pdf_title)
+            # 直接使用Markdown内容生成DOCX（确保格式正确）
+            docx_url = docx_client.create_docx_from_markdown(clean_brief_normalized, docx_title)
             
         except Exception as e:
             return f"❌ 生成文档失败：{str(e)}"
