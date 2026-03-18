@@ -1,0 +1,26 @@
+# 广告项目经理Agent依赖包
+
+# LangChain相关
+langchain>=0.1.0
+langchain-openai>=0.0.5
+langgraph>=0.0.20
+
+# Teams Bot Framework (用于双向对话)
+botbuilder-core>=4.15.0
+botbuilder-schema>=4.15.0
+botbuilder-integration-aiohttp>=4.15.0
+aiohttp>=3.9.0
+
+# 文档处理
+coze-coding-dev-sdk>=1.0.0
+
+# Notion集成
+notion-client>=2.2.1
+
+# 邮件发送
+# （依赖系统内置，无需额外安装）
+
+# 工具库
+python-dotenv>=1.0.0
+requests>=2.31.0
+pydantic>=2.0.0
