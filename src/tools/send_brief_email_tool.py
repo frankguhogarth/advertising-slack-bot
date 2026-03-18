@@ -95,6 +95,128 @@ def download_image(url: str, save_path: str) -> bool:
         return False
 
 
+def markdown_to_html(brief_content: str) -> str:
+    """将Markdown内容转换为HTML，使用更好的字体和样式
+    
+    Args:
+        brief_content: Markdown格式的内容
+        
+    Returns:
+        HTML格式的内容
+    """
+    html_lines = []
+    html_lines.append('<!DOCTYPE html>')
+    html_lines.append('<html lang="zh-CN">')
+    html_lines.append('<head>')
+    html_lines.append('<meta charset="UTF-8">')
+    html_lines.append('<style>')
+    html_lines.append('body {')
+    html_lines.append('  font-family: "Microsoft YaHei", "SimHei", Arial, sans-serif;')
+    html_lines.append('  font-size: 12px;')
+    html_lines.append('  line-height: 1.8;')
+    html_lines.append('  color: #333;')
+    html_lines.append('  margin: 40px;')
+    html_lines.append('}')
+    html_lines.append('h1, h2, h3, h4, h5, h6 {')
+    html_lines.append('  font-family: "Microsoft YaHei", "SimHei", Arial, sans-serif;')
+    html_lines.append('  color: #000;')
+    html_lines.append('  margin-top: 20px;')
+    html_lines.append('  margin-bottom: 10px;')
+    html_lines.append('}')
+    html_lines.append('h1 { font-size: 24px; font-weight: bold; }')
+    html_lines.append('h2 { font-size: 20px; font-weight: bold; }')
+    html_lines.append('h3 { font-size: 18px; font-weight: bold; }')
+    html_lines.append('h4 { font-size: 16px; font-weight: bold; }')
+    html_lines.append('h5 { font-size: 14px; font-weight: bold; }')
+    html_lines.append('h6 { font-size: 13px; font-weight: bold; }')
+    html_lines.append('ul, ol {')
+    html_lines.append('  margin: 10px 0;')
+    html_lines.append('  padding-left: 25px;')
+    html_lines.append('}')
+    html_lines.append('li {')
+    html_lines.append('  margin: 5px 0;')
+    html_lines.append('  line-height: 1.8;')
+    html_lines.append('}')
+    html_lines.append('p {')
+    html_lines.append('  margin: 10px 0;')
+    html_lines.append('  line-height: 1.8;')
+    html_lines.append('}')
+    html_lines.append('</style>')
+    html_lines.append('</head>')
+    html_lines.append('<body>')
+    
+    # 解析Markdown内容
+    lines = brief_content.split('\n')
+    in_list = False
+    in_code = False
+    
+    for line in lines:
+        # 处理标题（######）
+        if line.startswith('######'):
+            text = line[6:].strip()
+            html_lines.append(f'<h6>{text}</h6>')
+            in_list = False
+        elif line.startswith('#####'):
+            text = line[5:].strip()
+            html_lines.append(f'<h5>{text}</h5>')
+            in_list = False
+        elif line.startswith('####'):
+            text = line[4:].strip()
+            html_lines.append(f'<h4>{text}</h4>')
+            in_list = False
+        elif line.startswith('###'):
+            text = line[3:].strip()
+            html_lines.append(f'<h3>{text}</h3>')
+            in_list = False
+        elif line.startswith('##'):
+            text = line[2:].strip()
+            html_lines.append(f'<h2>{text}</h2>')
+            in_list = False
+        elif line.startswith('#'):
+            text = line[1:].strip()
+            html_lines.append(f'<h1>{text}</h1>')
+            in_list = False
+        # 处理列表项（- 或 数字.）
+        elif line.strip().startswith('-'):
+            if not in_list:
+                html_lines.append('<ul>')
+                in_list = True
+            text = line.lstrip('-').strip()
+            html_lines.append(f'<li>{text}</li>')
+        elif line.strip() and line.strip()[0].isdigit() and '. ' in line.strip():
+            if not in_list:
+                html_lines.append('<ol>')
+                in_list = True
+            text = line.split('. ', 1)[1] if '. ' in line else line
+            html_lines.append(f'<li>{text}</li>')
+        # 处理缩进（\t）
+        elif line.startswith('\t'):
+            text = line.lstrip('\t').strip()
+            html_lines.append(f'<p style="margin-left: 20px;">{text}</p>')
+            in_list = False
+        # 处理空行
+        elif not line.strip():
+            if in_list:
+                html_lines.append('</ul>')
+                in_list = False
+        # 处理普通文本
+        elif line.strip():
+            if in_list:
+                html_lines.append('</ul>')
+                in_list = False
+            text = line.strip()
+            html_lines.append(f'<p>{text}</p>')
+    
+    # 关闭未关闭的列表
+    if in_list:
+        html_lines.append('</ul>')
+    
+    html_lines.append('</body>')
+    html_lines.append('</html>')
+    
+    return '\n'.join(html_lines)
+
+
 @tool
 def send_brief_to_email(brief_content: str, to_email: str, client_name: str = None, runtime: ToolRuntime = None) -> str:
     """
@@ -145,8 +267,11 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
             pdf_config = PDFConfig(page_size="A4")
             pdf_client = DocumentGenerationClient(pdf_config=pdf_config)
             
-            # 使用清理后的brief内容生成PDF
-            pdf_url = pdf_client.create_pdf_from_markdown(clean_brief, pdf_title)
+            # 将Markdown转换为HTML，以确保中英文正确显示
+            html_content = markdown_to_html(clean_brief)
+            
+            # 使用HTML内容生成PDF
+            pdf_url = pdf_client.create_pdf_from_html(html_content, pdf_title)
             
         except Exception as e:
             return f"❌ 生成PDF文件失败：{str(e)}"
