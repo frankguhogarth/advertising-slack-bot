@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: advertising-slack-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python src/slack_bot/main.py
+    envVars:
+      - key: SLACK_BOT_TOKEN
+        value: xoxb-10721906269941-10753673319344-UEfI2MPzLKYcOQxhjhzCui3V
+      - key: SLACK_SIGNING_SECRET
+        value: 8d8077532096a705fc87c25d8df2a1ed
+      - key: PORT
+        value: 5001
+      - key: COZE_WORKSPACE_PATH
+        value: /opt/render/project
+    plan: free
