@@ -8,6 +8,7 @@ import smtplib
 import ssl
 import time
 import os
+import re
 import requests
 from datetime import datetime
 from email.mime.text import MIMEText
@@ -38,6 +39,62 @@ def get_email_config():
     return json.loads(email_credential)
 
 
+def extract_images_from_brief(brief_content: str) -> list:
+    """从brief内容中提取图片URL
+    
+    Args:
+        brief_content: brief的文本内容
+        
+    Returns:
+        图片信息列表，格式：[{"index": 1, "url": "https://...", "filename": "image_1.jpg"}]
+    """
+    images = []
+    # 匹配格式：[图片X: URL]
+    pattern = r'\[图片(\d+):\s*(https?://[^\]]+)\]'
+    matches = re.findall(pattern, brief_content)
+    
+    for index, url in matches:
+        # 确定文件扩展名
+        ext = ".jpg"
+        if ".png" in url.lower():
+            ext = ".png"
+        elif ".gif" in url.lower():
+            ext = ".gif"
+        elif ".webp" in url.lower():
+            ext = ".webp"
+        
+        filename = f"image_{index}{ext}"
+        images.append({
+            "index": int(index),
+            "url": url,
+            "filename": filename
+        })
+    
+    return images
+
+
+def download_image(url: str, save_path: str) -> bool:
+    """下载图片文件
+    
+    Args:
+        url: 图片URL
+        save_path: 保存路径
+        
+    Returns:
+        下载是否成功
+    """
+    try:
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        
+        with open(save_path, 'wb') as f:
+            f.write(response.content)
+        return True
+    except Exception as e:
+        print(f"下载图片失败 {url}: {str(e)}")
+        return False
+
+
 @tool
 def send_brief_to_email(brief_content: str, to_email: str, client_name: str = None, runtime: ToolRuntime = None) -> str:
     """
@@ -55,6 +112,7 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
     
     pdf_url = None
     temp_file_path = None
+    temp_files_to_cleanup = []
     
     try:
         # 检查邮件服务是否可用
@@ -63,6 +121,16 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
         
         # 获取邮件配置
         config = get_email_config()
+        
+        # 提取brief中的图片
+        images = extract_images_from_brief(brief_content)
+        
+        # 从brief内容中移除图片链接，改为占位符
+        clean_brief = brief_content
+        for image in images:
+            # 将 [图片X: URL] 替换为 [图片X - 请查看邮件附件]
+            old_pattern = f'[图片{image["index"]}:[^\\]]+]'
+            clean_brief = re.sub(old_pattern, f'[图片{image["index"]} - 请查看邮件附件]', clean_brief)
         
         # 生成PDF文件
         # title参数必须是英文，使用client_name的拼音或拼音首字母
@@ -77,8 +145,8 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
             pdf_config = PDFConfig(page_size="A4")
             pdf_client = DocumentGenerationClient(pdf_config=pdf_config)
             
-            # 生成PDF，返回S3的presigned URL
-            pdf_url = pdf_client.create_pdf_from_markdown(brief_content, pdf_title)
+            # 使用清理后的brief内容生成PDF
+            pdf_url = pdf_client.create_pdf_from_markdown(clean_brief, pdf_title)
             
         except Exception as e:
             return f"❌ 生成PDF文件失败：{str(e)}"
@@ -89,6 +157,7 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"brief_{client_prefix}_{timestamp}.pdf"
             temp_file_path = f"/tmp/{filename}"
+            temp_files_to_cleanup.append(temp_file_path)
             
             # 下载PDF文件
             response = requests.get(pdf_url, timeout=30)
@@ -100,7 +169,28 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
         except Exception as e:
             return f"❌ 下载PDF文件失败：{str(e)}"
         
+        # 下载图片文件
+        downloaded_images = []
+        for image in images:
+            image_path = f"/tmp/{image['filename']}"
+            if download_image(image["url"], image_path):
+                downloaded_images.append({
+                    "path": image_path,
+                    "filename": image["filename"]
+                })
+                temp_files_to_cleanup.append(image_path)
+        
         # 构建HTML格式邮件正文
+        attachment_list_html = "<ul>"
+        attachment_list_html += f"<li>文件格式：PDF（{filename}）</li>"
+        if downloaded_images:
+            attachment_list_html += "<li>参考图片："
+            attachment_list_html += "<ul>"
+            for img in downloaded_images:
+                attachment_list_html += f"<li>{img['filename']}</li>"
+            attachment_list_html += "</ul></li>"
+        attachment_list_html += "</ul>"
+        
         html_content = f"""
         <html>
         <head>
@@ -121,13 +211,12 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
                 </div>
                 <div class="content">
                     <p>您好，</p>
-                    <p>您的客户Brief已经整理完成，详细内容请查看附件中的 <strong>{filename}</strong> 文件。</p>
+                    <p>您的客户Brief已经整理完成，详细内容请查看附件。</p>
                     <div class="highlight">
                         <p><strong>附件说明：</strong></p>
-                        <ul>
-                            <li>文件格式：PDF</li>
-                            <li>客户名称：<span class="client-name">{client_name if client_name else '未指定'}</span></li>
-                            <li>生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</li>
+                        {attachment_list_html}
+                        <li>客户名称：<span class="client-name">{client_name if client_name else '未指定'}</span></li>
+                        <li>生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</li>
                         </ul>
                     </div>
                     <p>PDF文件可以直接在电脑、手机等设备上查看，无需安装特殊软件。</p>
@@ -170,6 +259,30 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
             )
             msg.attach(attachment)
         
+        # 添加图片附件
+        for img in downloaded_images:
+            with open(img["path"], 'rb') as f:
+                # 根据文件扩展名确定MIME类型
+                mime_type = 'image/jpeg'
+                if img["filename"].endswith('.png'):
+                    mime_type = 'image/png'
+                elif img["filename"].endswith('.gif'):
+                    mime_type = 'image/gif'
+                elif img["filename"].endswith('.webp'):
+                    mime_type = 'image/webp'
+                
+                img_attachment = MIMEBase('image', img["filename"].split('.')[-1])
+                img_attachment.set_payload(f.read())
+                encoders.encode_base64(img_attachment)
+                
+                # 设置附件文件名
+                encoded_img_filename = Header(img["filename"], 'utf-8').encode()
+                img_attachment.add_header(
+                    'Content-Disposition',
+                    f'attachment; filename="{encoded_img_filename}"'
+                )
+                msg.attach(img_attachment)
+        
         # 发送邮件
         ctx_ssl = ssl.create_default_context()
         ctx_ssl.minimum_version = ssl.TLSVersion.TLSv1_2
@@ -190,24 +303,30 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
                     server.sendmail(config["account"], [to_email], msg.as_string())
                     server.quit()
                 
-                # 清理临时文件
-                try:
-                    os.remove(temp_file_path)
-                except:
-                    pass
+                # 清理所有临时文件
+                for file_path in temp_files_to_cleanup:
+                    try:
+                        os.remove(file_path)
+                    except:
+                        pass
                 
-                return f"✅ Brief已成功发送到邮箱：{to_email}（附件：{filename}）"
+                image_info = ""
+                if downloaded_images:
+                    image_info = f"，图片附件：{len(downloaded_images)}个"
+                
+                return f"✅ Brief已成功发送到邮箱：{to_email}（附件：{filename}{image_info}）"
                 
             except (smtplib.SMTPServerDisconnected, smtplib.SMTPConnectError,
                     smtplib.SMTPDataError, smtplib.SMTPHeloError, ssl.SSLError, OSError) as e:
                 last_err = e
                 time.sleep(1 * (i + 1))
         
-        # 清理临时文件（发送失败时）
-        try:
-            os.remove(temp_file_path)
-        except:
-            pass
+        # 清理所有临时文件（发送失败时）
+        for file_path in temp_files_to_cleanup:
+            try:
+                os.remove(file_path)
+            except:
+                pass
         
         if last_err:
             return f"❌ 发送邮件失败：{str(last_err)}"
@@ -215,10 +334,11 @@ def send_brief_to_email(brief_content: str, to_email: str, client_name: str = No
         return "❌ 发送邮件失败：未知错误"
         
     except Exception as e:
-        # 清理临时文件（发生异常时）
-        try:
-            if temp_file_path and os.path.exists(temp_file_path):
-                os.remove(temp_file_path)
-        except:
-            pass
+        # 清理所有临时文件（发生异常时）
+        for file_path in temp_files_to_cleanup:
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+            except:
+                pass
         return f"❌ 发送邮件时发生错误：{str(e)}"

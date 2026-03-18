@@ -73,7 +73,9 @@ def _get_all_staff_data() -> list:
             "name": extract_name_from_title(page_id),
             "email": "",
             "position": "",
-            "skills": ""
+            "skills": "",
+            "role": "",
+            "remarks": ""
         }
         
         # 提取属性值
@@ -88,10 +90,18 @@ def _get_all_staff_data() -> list:
                     staff_info["position"] = select.get("name", "")
                 elif select and "skill" in prop_name.lower():
                     staff_info["skills"] = select.get("name", "")
+                elif select and "role" in prop_name.lower():
+                    staff_info["role"] = select.get("name", "")
+            elif prop_type == "rich_text":
+                text_content = prop_data.get("rich_text", [])
+                if "remark" in prop_name.lower():
+                    staff_info["remarks"] = "".join([t.get("plain_text", "") for t in text_content])
             elif prop_type == "multi_select":
                 selects = prop_data.get("multi_select", [])
                 if "skill" in prop_name.lower():
                     staff_info["skills"] = ", ".join([s.get("name", "") for s in selects])
+                elif "role" in prop_name.lower():
+                    staff_info["role"] = ", ".join([s.get("name", "") for s in selects])
         
         staff_list.append(staff_info)
     
@@ -136,14 +146,28 @@ def _get_staff_workload_data() -> dict:
 
 
 def _find_staff_by_position_data(position: str) -> list:
-    """根据职位查找员工并排序的普通函数（内部使用）"""
+    """根据职位查找员工并排序的普通函数（内部使用）
+    
+    匹配规则：
+    1. 检查position字段是否包含职位名称
+    2. 检查role字段是否包含职位名称
+    3. 检查remarks字段是否包含职位名称
+    4. 只要任意一个字段匹配，就认为该员工符合要求
+    """
     # 获取所有员工信息
     staff_list = _get_all_staff_data()
     
     # 筛选匹配职位的员工
     matched_staff = []
+    position_lower = position.lower()
+    
     for staff in staff_list:
-        if position.lower() in staff["position"].lower():
+        # 检查多个字段是否匹配
+        position_match = position_lower in staff["position"].lower()
+        role_match = position_lower in staff["role"].lower()
+        remarks_match = position_lower in staff["remarks"].lower()
+        
+        if position_match or role_match or remarks_match:
             matched_staff.append(staff)
     
     # 获取工作量数据
